@@ -1,122 +1,82 @@
 package miyucomics.hexcassettes
 
 import at.petrak.hexcasting.api.HexAPI
-import com.google.gson.JsonObject
+import miyucomics.hexcassettes.advancement.HexcassettesCriterion
+import miyucomics.hexcassettes.client.ClientBootstrap
 import miyucomics.hexcassettes.inits.HexcassettesActions
+import miyucomics.hexcassettes.inits.HexcassettesAttachments
+import miyucomics.hexcassettes.inits.getCassetteState
 import miyucomics.hexcassettes.inits.HexcassettesNetworking
 import miyucomics.hexcassettes.inits.HexcassettesSounds
-import net.fabricmc.api.ModInitializer
-import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
-import net.fabricmc.fabric.api.gamerule.v1.GameRuleFactory
-import net.fabricmc.fabric.api.gamerule.v1.GameRuleRegistry
-import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents
-import net.minecraft.advancement.criterion.AbstractCriterion
-import net.minecraft.advancement.criterion.AbstractCriterionConditions
-import net.minecraft.advancement.criterion.Criteria
-import net.minecraft.entity.LivingEntity
-import net.minecraft.item.FoodComponent
-import net.minecraft.item.Item
-import net.minecraft.item.ItemStack
-import net.minecraft.predicate.entity.AdvancementEntityPredicateDeserializer
-import net.minecraft.predicate.entity.LootContextPredicate
-import net.minecraft.registry.Registries
-import net.minecraft.registry.Registry
-import net.minecraft.registry.RegistryKey
-import net.minecraft.server.network.ServerPlayerEntity
-import net.minecraft.sound.SoundCategory
-import net.minecraft.text.Text
-import net.minecraft.util.Identifier
-import net.minecraft.util.Rarity
-import net.minecraft.world.GameRules
-import net.minecraft.world.World
+import net.minecraft.advancements.CriterionTrigger
+import net.minecraft.core.registries.Registries
+import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerPlayer
+import net.neoforged.api.distmarker.Dist
+import net.neoforged.bus.api.IEventBus
+import net.neoforged.fml.ModContainer
+import net.neoforged.fml.common.Mod
+import net.neoforged.fml.config.ModConfig
+import net.neoforged.fml.loading.FMLEnvironment
+import net.neoforged.neoforge.common.NeoForge
+import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent
+import net.neoforged.neoforge.event.entity.player.PlayerEvent
+import net.neoforged.neoforge.event.tick.PlayerTickEvent
+import net.neoforged.neoforge.registries.DeferredRegister
+import java.util.function.Supplier
 
-class HexcassettesMain : ModInitializer {
-	override fun onInitialize() {
-		ServerPlayerEvents.AFTER_RESPAWN.register { oldPlayer, newPlayer, _ -> (newPlayer as PlayerEntityMinterface).getCassetteState().owned = (oldPlayer as PlayerEntityMinterface).getCassetteState().owned }
-		CassetteItem().also {
-			Registry.register(Registries.ITEM, id("cassette"), it)
-			ItemGroupEvents.modifyEntriesEvent(RegistryKey.of(Registries.ITEM_GROUP.key, HexAPI.modLoc("hexcasting"))).register { group -> group.add(it) }
-		}
+@Mod(HexcassettesMain.MOD_ID)
+class HexcassettesMain(modBus: IEventBus, container: ModContainer) {
+    init {
+        ITEMS.register(modBus)
+        TRIGGERS.register(modBus)
+        HexcassettesSounds.register(modBus)
+        HexcassettesAttachments.register(modBus)
+        HexcassettesNetworking.register(modBus)
+        HexcassettesActions.register(modBus)
+        modBus.addListener(::addCreativeTabContents)
+        NeoForge.EVENT_BUS.addListener(::tickPlayer)
+        NeoForge.EVENT_BUS.addListener(::onLogin)
+        NeoForge.EVENT_BUS.addListener(::onClone)
+        container.registerConfig(ModConfig.Type.COMMON, HexcassettesConfiguration.SPEC)
 
-		QUINIO = Criteria.register(QuineCriterion())
-		TAPE_WORM = Criteria.register(TapeWormCriterion())
-		FULL_ARSENAL = Criteria.register(FullArsenalCriterion())
+        if (FMLEnvironment.dist == Dist.CLIENT) ClientBootstrap.initialize(modBus)
+    }
 
-		HexcassettesNetworking.init()
-		HexcassettesActions.init()
-		HexcassettesSounds.init()
-	}
+    private fun addCreativeTabContents(event: BuildCreativeModeTabContentsEvent) {
+        if (event.tabKey == HexAPI.modLoc("hexcasting")) event.accept(CASSETTE.get())
+    }
 
-	companion object {
-		const val MOD_ID: String = "hexcassettes"
-		fun id(string: String) = Identifier(MOD_ID, string)
+    private fun tickPlayer(event: PlayerTickEvent.Post) {
+        val player = event.entity
+        if (!player.level().isClientSide && player is ServerPlayer) player.getCassetteState().tick(player)
+    }
 
-		lateinit var QUINIO: QuineCriterion
-		lateinit var TAPE_WORM: TapeWormCriterion
-		lateinit var FULL_ARSENAL: FullArsenalCriterion
+    private fun onLogin(event: PlayerEvent.PlayerLoggedInEvent) {
+        (event.entity as? ServerPlayer)?.let { it.getCassetteState().sync(it) }
+    }
 
-		fun serializeKey(key: Text): String = Text.Serializer.toJson(key)
-		fun deserializeKey(data: String) = Text.Serializer.fromJson(data)!!
-	}
-}
+    private fun onClone(event: PlayerEvent.Clone) {
+        // AttachmentType.copyOnDeath performs the persistent clone. Sync the resulting value.
+        (event.entity as? ServerPlayer)?.let { it.getCassetteState().sync(it) }
+    }
 
-// kinda messy, but I don't want to make a whole file for these
+    companion object {
+        const val MOD_ID = "hexcassettes"
+        fun id(path: String): ResourceLocation = ResourceLocation.fromNamespaceAndPath(MOD_ID, path)
 
-class CassetteItem : Item(Settings().maxCount(1).rarity(Rarity.UNCOMMON).food(FoodComponent.Builder().alwaysEdible().build())) {
-	override fun getMaxUseTime(stack: ItemStack) = 100
-	override fun getEatSound() = HexcassettesSounds.CASSETTE_LOOP
+        private val ITEMS = DeferredRegister.create(Registries.ITEM, MOD_ID)
+        @JvmField val CASSETTE: Supplier<CassetteItem> = ITEMS.register("cassette", ::CassetteItem)
 
-	override fun finishUsing(stack: ItemStack, world: World, user: LivingEntity): ItemStack {
-		if (world.isClient) {
-			world.playSound(user.x, user.y, user.z, HexcassettesSounds.CASSETTE_INSERT, SoundCategory.MASTER, 5f, 1f, false)
-			return super.finishUsing(stack, world, user)
-		}
+        private val TRIGGERS = DeferredRegister.create<CriterionTrigger<*>>(Registries.TRIGGER_TYPE, MOD_ID)
+        @JvmField val QUINIO = HexcassettesCriterion()
+        @JvmField val TAPE_WORM = HexcassettesCriterion()
+        @JvmField val FULL_ARSENAL = HexcassettesCriterion()
 
-		if (user !is ServerPlayerEntity)
-			return super.finishUsing(stack, world, user)
-
-		val maxCassettes = HexcassettesConfiguration.instance.maxCassettes
-		val cassetteData = (user as PlayerEntityMinterface).getCassetteState()
-		if (cassetteData.owned < maxCassettes) {
-			HexcassettesMain.TAPE_WORM.trigger(user)
-			cassetteData.owned += 1
-			if (cassetteData.owned == maxCassettes)
-				HexcassettesMain.FULL_ARSENAL.trigger(user)
-			cassetteData.sync(user)
-		}
-		return super.finishUsing(stack, world, user)
-	}
-}
-
-class QuineCriterion : AbstractCriterion<QuineCriterion.Condition>() {
-	override fun conditionsFromJson(jsonObject: JsonObject, lootContextPredicate: LootContextPredicate, advancementEntityPredicateDeserializer: AdvancementEntityPredicateDeserializer) = Condition()
-	fun trigger(player: ServerPlayerEntity) = trigger(player) { true }
-	override fun getId() = ID
-
-	class Condition : AbstractCriterionConditions(ID, LootContextPredicate.EMPTY)
-	companion object {
-		val ID: Identifier = HexcassettesMain.id("quinio")
-	}
-}
-
-class TapeWormCriterion : AbstractCriterion<TapeWormCriterion.Condition>() {
-	override fun conditionsFromJson(jsonObject: JsonObject, lootContextPredicate: LootContextPredicate, advancementEntityPredicateDeserializer: AdvancementEntityPredicateDeserializer) = Condition()
-	fun trigger(player: ServerPlayerEntity) = trigger(player) { true }
-	override fun getId() = ID
-
-	class Condition : AbstractCriterionConditions(ID, LootContextPredicate.EMPTY)
-	companion object {
-		val ID: Identifier = HexcassettesMain.id("tape_worm")
-	}
-}
-
-class FullArsenalCriterion : AbstractCriterion<FullArsenalCriterion.Condition>() {
-	override fun conditionsFromJson(jsonObject: JsonObject, lootContextPredicate: LootContextPredicate, advancementEntityPredicateDeserializer: AdvancementEntityPredicateDeserializer) = Condition()
-	fun trigger(player: ServerPlayerEntity) = trigger(player) { true }
-	override fun getId() = ID
-
-	class Condition : AbstractCriterionConditions(ID, LootContextPredicate.EMPTY)
-	companion object {
-		val ID: Identifier = HexcassettesMain.id("full_arsenal")
-	}
+        init {
+            TRIGGERS.register("quinio", Supplier { QUINIO })
+            TRIGGERS.register("tape_worm", Supplier { TAPE_WORM })
+            TRIGGERS.register("full_arsenal", Supplier { FULL_ARSENAL })
+        }
+    }
 }

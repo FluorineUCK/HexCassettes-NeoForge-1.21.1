@@ -3,24 +3,19 @@ package miyucomics.hexcassettes.actions
 import at.petrak.hexcasting.api.casting.RenderedSpell
 import at.petrak.hexcasting.api.casting.castables.SpellAction
 import at.petrak.hexcasting.api.casting.eval.CastingEnvironment
-import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.iota.Iota
-import at.petrak.hexcasting.api.casting.mishaps.MishapBadCaster
-import miyucomics.hexcassettes.PlayerEntityMinterface
-import miyucomics.hexpose.iotas.getText
-import net.minecraft.text.Text
+import miyucomics.hexcassettes.hexcompat.ComponentCompat
 
 class OpDequeue : SpellAction {
-	override val argc = 1
-	override fun execute(args: List<Iota>, env: CastingEnvironment): SpellAction.Result {
-		if (env.castingEntity !is PlayerEntityMinterface)
-			throw MishapBadCaster()
-		return SpellAction.Result(Spell(args.getText(0, argc)), 0, listOf())
-	}
+    override val argc = 1
+    override fun execute(args: List<Iota>, env: CastingEnvironment): SpellAction.Result {
+        env.requireCassetteState()
+        return SpellAction.Result(Spell(ComponentCompat.encode(args.getDisplayIota(0, argc).text)), 0, emptyList())
+    }
 
-	private data class Spell(val pattern: Text) : RenderedSpell {
-		override fun cast(env: CastingEnvironment) {
-			(env.castingEntity as PlayerEntityMinterface).getCassetteState().hexes.remove(Text.Serializer.toJson(pattern))
-		}
-	}
+    private data class Spell(val key: String) : RenderedSpell {
+        override fun cast(env: CastingEnvironment) {
+            env.requireCassetteState().hexes.remove(key)
+        }
+    }
 }

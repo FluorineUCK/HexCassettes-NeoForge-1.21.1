@@ -1,59 +1,55 @@
 package miyucomics.hexcassettes.data
 
 import miyucomics.hexcassettes.inits.HexcassettesNetworking
-import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
-import net.minecraft.nbt.NbtCompound
-import net.minecraft.server.network.ServerPlayerEntity
+import net.minecraft.core.HolderLookup
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.server.level.ServerPlayer
+import net.neoforged.neoforge.common.util.INBTSerializable
 import java.util.concurrent.ConcurrentHashMap
 
-class CassetteState {
-	var owned = 0
-	val hexes: MutableMap<String, QueuedHex> = ConcurrentHashMap()
-	private var previouslyActiveSlots: Set<String> = emptySet()
+class CassetteState : INBTSerializable<CompoundTag> {
+    var owned = 0
+    val hexes: MutableMap<String, QueuedHex> = ConcurrentHashMap()
+    private var previouslyActiveSlots: Set<String> = emptySet()
 
-	fun sync(player: ServerPlayerEntity) {
-		val buf = PacketByteBufs.create()
-		buf.writeInt(owned)
-		val keys = hexes.keys
-		buf.writeInt(keys.size)
-		keys.forEach { buf.writeString(it) }
-		ServerPlayNetworking.send(player, HexcassettesNetworking.SYNC_CASSETTES, buf)
-	}
+    fun sync(player: ServerPlayer) = HexcassettesNetworking.sendSync(player, this)
 
-	fun tick(player: ServerPlayerEntity) {
-		hexes.forEach { (_, hex) -> hex.delay -= 1 }
+    fun tick(player: ServerPlayer) {
+        hexes.values.forEach { it.delay -= 1 }
+        val ready = hexes.entries.filter { it.value.delay <= 0 }
+        ready.forEach { (pattern, hex) ->
+            if (hexes.remove(pattern, hex)) hex.cast(player, pattern)
+        }
+        val activeSlots = hexes.keys.toSet()
+        if (previouslyActiveSlots != activeSlots) sync(player)
+        previouslyActiveSlots = activeSlots
+    }
 
-		val iterator = hexes.iterator()
-		while (iterator.hasNext()) {
-			val (pattern, hex) = iterator.next()
-			if (hex.delay <= 0) {
-				iterator.remove()
-				hex.cast(player, pattern)
-			}
-		}
+    override fun serializeNBT(provider: HolderLookup.Provider): CompoundTag = serialize()
 
-		val activeIndices = hexes.keys.map { it }.toSet()
-		if (previouslyActiveSlots != activeIndices)
-			sync(player)
-		previouslyActiveSlots = activeIndices
-	}
+    fun serialize(): CompoundTag = CompoundTag().also { compound ->
+        compound.putInt("owned", owned)
+        val serialized = CompoundTag()
+        hexes.forEach { (pattern, hex) -> serialized.put(pattern, hex.serialize()) }
+        compound.put("hexes", serialized)
+    }
 
-	fun serialize(): NbtCompound {
-		val compound = NbtCompound()
-		compound.putInt("owned", owned)
-		val serialized = NbtCompound()
-		hexes.forEach { (pattern, hex) -> serialized.put(pattern, hex.serialize()) }
-		compound.put("hexes", serialized)
-		return compound
-	}
+    override fun deserializeNBT(provider: HolderLookup.Provider, nbt: CompoundTag) {
+        read(nbt)
+    }
 
-	companion object {
-		@JvmStatic
-		fun deserialize(compound: NbtCompound) = CassetteState().also {
-			it.owned = compound.getInt("owned")
-			val hexes = compound.getCompound("hexes")
-			hexes.keys.forEach { key -> it.hexes[key] = QueuedHex.deserialize(hexes.getCompound(key)) }
-		}
-	}
+    private fun read(compound: CompoundTag) {
+        owned = compound.getInt("owned")
+        hexes.clear()
+        val serializedHexes = compound.getCompound("hexes")
+        serializedHexes.allKeys.forEach { key ->
+            hexes[key] = QueuedHex.deserialize(serializedHexes.getCompound(key))
+        }
+        previouslyActiveSlots = hexes.keys.toSet()
+    }
+
+    companion object {
+        @JvmStatic
+        fun deserialize(compound: CompoundTag) = CassetteState().also { it.read(compound) }
+    }
 }

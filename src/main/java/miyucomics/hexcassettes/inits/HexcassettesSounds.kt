@@ -1,27 +1,22 @@
 package miyucomics.hexcassettes.inits
 
 import miyucomics.hexcassettes.HexcassettesMain
-import net.minecraft.registry.Registries
-import net.minecraft.registry.Registry
-import net.minecraft.sound.SoundEvent
+import net.minecraft.core.registries.Registries
+import net.minecraft.sounds.SoundEvent
+import net.neoforged.bus.api.IEventBus
+import net.neoforged.neoforge.registries.DeferredRegister
+import java.util.function.Supplier
 
 object HexcassettesSounds {
-	lateinit var CASSETTE_EJECT: SoundEvent
-	lateinit var CASSETTE_FAIL: SoundEvent
-	lateinit var CASSETTE_INSERT: SoundEvent
-	lateinit var CASSETTE_LOOP: SoundEvent
+    private val SOUNDS = DeferredRegister.create(Registries.SOUND_EVENT, HexcassettesMain.MOD_ID)
 
-	fun init() {
-		CASSETTE_EJECT = register("cassette_eject")
-		CASSETTE_FAIL = register("cassette_fail")
-		CASSETTE_INSERT = register("cassette_insert")
-		CASSETTE_LOOP = register("cassette_loop")
-	}
+    @JvmField val CASSETTE_EJECT = register("cassette_eject")
+    @JvmField val CASSETTE_FAIL = register("cassette_fail")
+    @JvmField val CASSETTE_INSERT = register("cassette_insert")
+    @JvmField val CASSETTE_LOOP = register("cassette_loop")
 
-	private fun register(name: String): SoundEvent {
-		val id = HexcassettesMain.id(name)
-		val event = SoundEvent.of(id)
-		Registry.register(Registries.SOUND_EVENT, id, event)
-		return event
-	}
+    fun register(bus: IEventBus) = SOUNDS.register(bus)
+
+    private fun register(name: String): Supplier<SoundEvent> =
+        SOUNDS.register(name, Supplier { SoundEvent.createVariableRangeEvent(HexcassettesMain.id(name)) })
 }

@@ -1,0 +1,49 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mods]]
+modId = "hexcassettes"
+version = "${version}"
+displayName = "Hexcassettes"
+logoFile = "assets/hexcassettes/icon.png"
+authors = "miyucomics"
+description = '''
+Store Hex Casting programs in delayed, parallel cassette slots.
+'''
+displayURL = "https://github.com/miyucomics/hexcassettes"
+
+[[dependencies.hexcassettes]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.234,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.hexcassettes]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.21.2)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.hexcassettes]]
+modId = "kotlinforforge"
+type = "required"
+versionRange = "[5.12.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.hexcassettes]]
+modId = "hexcasting"
+type = "required"
+versionRange = "[0.12.0-devel-pre-39,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.hexcassettes]]
+modId = "hexpose"
+type = "required"
+versionRange = "[1.0.0,)"
+ordering = "AFTER"
+side = "BOTH"

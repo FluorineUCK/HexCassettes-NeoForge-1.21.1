@@ -1,67 +1,103 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 plugins {
-	id "fabric-loom" version "1.9-SNAPSHOT"
-	id "maven-publish"
-	id "org.jetbrains.kotlin.jvm" version "2.2.21"
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.141'
+    id 'org.jetbrains.kotlin.jvm'
 }
 
 version = mod_version
-group = maven_group
+group = mod_group_id
 
 base {
-	archivesName = archives_base_name
-}
-
-repositories {
-    maven { url = "https://maven.blamejared.com/" }
-    maven { url = "https://maven.ladysnake.org/releases" }
-    maven { url = "https://maven.shedaniel.me/" }
-    maven { url = "https://maven.terraformersmc.com/releases" }
-	maven { url = "https://maven.hexxy.media" }
-}
-
-dependencies {
-	minecraft "com.mojang:minecraft:$minecraft_version"
-	mappings "net.fabricmc:yarn:$yarn_mappings"
-	modImplementation "net.fabricmc:fabric-loader:$loader_version"
-	modImplementation "net.fabricmc.fabric-api:fabric-api:$fabric_api_version"
-	modImplementation "net.fabricmc:fabric-language-kotlin:$fabric_kotlin_version"
-
-	modImplementation "miyucomics.hexpose:hexpose:$hexpose_version"
-	modImplementation "me.shedaniel.cloth:cloth-config-fabric:$cloth_config_version"
-	modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:$hexcasting_version") {
-		exclude module: "phosphor"
-		exclude module: "lithium"
-		exclude module: "emi"
-	}
-
-	modLocalRuntime "dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_components_version"
-	modLocalRuntime "com.samsthenerd.inline:inline-fabric:$minecraft_version-$inline_version"
-	modLocalRuntime "vazkii.patchouli:Patchouli:$minecraft_version-$patchouli_version-FABRIC"
-	modLocalRuntime "at.petra-k.paucal:paucal-fabric-$minecraft_version:$paucal_version"
-	modLocalRuntime "io.github.tropheusj:serialization-hooks:0.4.99999"
-}
-
-processResources {
-	inputs.property "version", version
-	filesMatching("fabric.mod.json") {
-		expand "version": version
-	}
-}
-
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 17
-}
-
-tasks.withType(KotlinCompile).configureEach {
-	kotlinOptions {
-		jvmTarget = "17"
-	}
+    archivesName = mod_id
 }
 
 java {
-	withSourcesJar()
-	sourceCompatibility = JavaVersion.VERSION_17
-	targetCompatibility = JavaVersion.VERSION_17
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+neoForge {
+    version = neo_version
+
+    runs {
+        client { client() }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+        configureEach {
+            logLevel = org.slf4j.event.Level.INFO
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://thedarkcolour.github.io/KotlinForForge/" }
+    maven { url "https://maven.shedaniel.me/" }
+    maven { url "https://maven.architectury.dev/" }
+}
+
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    implementation files("libs/hexcasting-neoforge-${minecraft_version}-${hexcasting_version}.jar")
+    implementation files("libs/hexpose-neoforge-${hexpose_version}.jar")
+    implementation files("libs/paucal-${paucal_version}+${minecraft_version}-neoforge.jar")
+    localRuntime files("libs/hexcasting-neoforge-${minecraft_version}-${hexcasting_version}.jar")
+    localRuntime files("libs/hexpose-neoforge-${hexpose_version}.jar")
+    localRuntime files("libs/paucal-${paucal_version}+${minecraft_version}-neoforge.jar")
+    localRuntime files("libs/inline-${minecraft_version}-${inline_version}-neoforge-devruntime.jar")
+    localRuntime files("libs/caelus-neoforge-${caelus_version}.jar")
+    localRuntime files("libs/Patchouli-${minecraft_version}-${patchouli_version}-NEOFORGE.jar")
+    localRuntime "dev.architectury:architectury-neoforge:${architectury_version}"
+    implementation "thedarkcolour:kotlinforforge-neoforge:${kotlin_for_forge_version}"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+}
+
+sourceSets.main.kotlin.srcDirs += "src/main/java"
+sourceSets.main.java.srcDirs += "src/client/java"
+sourceSets.main.kotlin.srcDirs += "src/client/java"
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("META-INF/neoforge.mods.toml") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 21
+}
+
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        freeCompilerArgs.add("-Xjvm-default=all")
+    }
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.mod_id}" }
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = project.mod_id
+            from components.java
+        }
+    }
 }

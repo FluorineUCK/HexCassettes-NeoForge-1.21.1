@@ -1,0 +1,17 @@
+{
+	"type": "minecraft:crafting_shaped",
+	"category": "misc",
+	"key": {
+		"A": {
+			"item": "hexcasting:charged_amethyst"
+		},
+		"D": {
+			"tag": "minecraft:music_discs"
+		}
+	},
+	"pattern": [" A ", "ADA", " A "],
+	"result": {
+		"id": "hexcassettes:cassette",
+		"count": 1
+	}
+}
